@@ -1,0 +1,13 @@
+# Dependencies for the Streamlit app only (deployment). The data pipeline needs more: see pyproject.toml.
+streamlit>=1.50
+folium>=0.20
+streamlit-folium>=0.25
+geopandas>=1.0
+shapely>=2.1
+rasterio>=1.4
+pyogrio>=0.10
+pandas>=2.2
+numpy>=2.0
+matplotlib>=3.9
+pillow>=10
+affine>=2.4

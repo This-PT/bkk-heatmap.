@@ -1,0 +1,26 @@
+[project]
+name = "bkk-heatmap"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "earthengine-api",
+    "geemap",
+    "geopandas",
+    "shapely",
+    "rasterio",
+    "rasterstats",
+    "osmnx",
+    "requests",
+    "pandas",
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "pyogrio",
+    "streamlit",
+    "leafmap",
+    "folium",
+    "streamlit-folium",
+]
+
+[tool.setuptools]
+packages = ["src"]
