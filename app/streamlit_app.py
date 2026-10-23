@@ -68,6 +68,13 @@ def load_hotspots():
 
 
 @st.cache_data
+def load_focus():
+    """Output of src.focus (hot AND short of green); empty if it has not been run."""
+    p = PROCESSED / "focus_areas.gpkg"
+    return gpd.read_file(p) if p.exists() else gpd.GeoDataFrame(geometry=[], crs=4326)
+
+
+@st.cache_data
 def load_green():
     g = gpd.read_file(PROCESSED / "green_zones.gpkg")[["district_en", "category", "name", "area_m2", "geometry"]]
     g["geometry"] = shapely.set_precision(g.geometry.values, 1e-5)  # ~1 m, keeps citywide GeoJSON small
@@ -132,6 +139,9 @@ shown_types = st.sidebar.multiselect(
     help="Dark green = parks, light green = gardens and other OSM green, pale mint = open green seen by satellite")
 show_canopy = st.sidebar.checkbox("Tree canopy in neighbourhoods (not counted as green zone)", False)
 show_hot = st.sidebar.checkbox("Where to add green space (hotspots)", True)
+show_focus = st.sidebar.checkbox("Focus areas: hot + short of green (src.focus)", True,
+                                 help="Hottest 20% AND least-green 20% of 250 m cells; orange outlines, ranked by score x area")
+satellite = st.sidebar.checkbox("Satellite imagery base map", False, help="Use it to check whether a focus area is really housing, or an airport / factory / empty land")
 zoom = st.sidebar.checkbox("Zoom to selected district", True, help="Only moves the view; layers are always drawn for the whole city")
 opacity = st.sidebar.slider("Raster opacity", 0.2, 1.0, 0.7)
 
@@ -141,6 +151,9 @@ st.caption("LST: Landsat 8/9, Mar–May 2023–25 median (~10:30 am overpass, su
            "Heat risk = z(LST) + z(built-up %) − z(NDVI) + z(elderly %).")
 m = folium.Map(location=[13.75, 100.6], zoom_start=10, tiles="OpenStreetMap",
                zoomAnimation=False, fadeAnimation=False, markerZoomAnimation=False)  # no animated blink on zoom
+if satellite:
+    folium.TileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                     attr="Esri World Imagery", name="Satellite").add_to(m)
 if show_lst:
     uri, bnds, lo, hi = raster_overlay(str(LST_TIF), "inferno", bkk_geom)
     folium.raster_layers.ImageOverlay(uri, bnds, opacity=opacity, name=f"LST {lo:.0f}–{hi:.0f} °C").add_to(m)
@@ -197,6 +210,16 @@ if show_hot and len(hv):
                    tooltip=folium.GeoJsonTooltip(fields=["hotspot_id", "lst", "pop", "area_ha", "near_place"],
                                                  aliases=["Hotspot", "LST °C", "People", "Area (ha)", "Near"],
                                                  localize=True)).add_to(m)
+focus = load_focus()
+if show_focus and len(focus):
+    folium.GeoJson(focus[["rank", "district_en", "lst", "ndvi", "dist_green_m", "area_ha", "pop", "geometry"]].to_json(),
+                   name="Focus areas",
+                   style_function=lambda f: {"color": "#e65100", "fillColor": "#ff9800", "weight": 2, "fillOpacity": 0.35},
+                   tooltip=folium.GeoJsonTooltip(fields=["rank", "district_en", "lst", "ndvi", "dist_green_m", "area_ha", "pop"],
+                                                 aliases=["Rank", "District", "LST °C", "NDVI", "Dist. to green (m)", "Area (ha)", "People"],
+                                                 localize=True)).add_to(m)
+elif show_focus:
+    st.sidebar.warning("No focus areas found. Run: python -m src.focus")
 if zoom:
     x0, y0, x1, y1 = scores[scores.district_en == sel].total_bounds
     m.fit_bounds([[y0, x0], [y1, x1]])
