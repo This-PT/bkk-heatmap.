@@ -154,33 +154,39 @@ st.caption("LST: Landsat 8/9, Mar–May 2023–25 median (~10:30 am overpass, su
            "Heat risk = z(LST) + z(built-up %) − z(NDVI) + z(elderly %).")
 m = folium.Map(location=[13.75, 100.6], zoom_start=10, tiles="OpenStreetMap",
                zoomAnimation=False, fadeAnimation=False, markerZoomAnimation=False)  # no animated blink on zoom
+fg = folium.FeatureGroup(name="Layers")  # all toggled layers live here, so the base map (and your zoom) stays put
 if satellite:
     folium.TileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                     attr="Esri World Imagery", name="Satellite").add_to(m)
+                     attr="Esri World Imagery", name="Satellite").add_to(fg)
 if show_lst:
     uri, bnds, lo, hi = raster_overlay(str(LST_TIF), "inferno", bkk_geom)
-    folium.raster_layers.ImageOverlay(uri, bnds, opacity=opacity, name=f"LST {lo:.0f}–{hi:.0f} °C").add_to(m)
+    folium.raster_layers.ImageOverlay(uri, bnds, opacity=opacity, name=f"LST {lo:.0f}–{hi:.0f} °C").add_to(fg)
 if show_ndvi:
     uri, bnds, lo, hi = raster_overlay(str(NDVI_TIF), "RdYlGn", bkk_geom)
-    folium.raster_layers.ImageOverlay(uri, bnds, opacity=opacity, name=f"NDVI {lo:.2f}–{hi:.2f}").add_to(m)
+    folium.raster_layers.ImageOverlay(uri, bnds, opacity=opacity, name=f"NDVI {lo:.2f}–{hi:.2f}").add_to(fg)
 if show_osm:
     folium.GeoJson(load_osm("parks").to_json(), name="Parks",
-                   style_function=lambda f: {"color": "#1a7f37", "fillColor": "#1a7f37", "weight": 0.5, "fillOpacity": 0.6}).add_to(m)
+                   style_function=lambda f: {"color": "#1a7f37", "fillColor": "#1a7f37", "weight": 0.5, "fillOpacity": 0.6}).add_to(fg)
     folium.GeoJson(load_osm("water").to_json(), name="Water",
-                   style_function=lambda f: {"color": "#1f77b4", "fillColor": "#1f77b4", "weight": 1, "fillOpacity": 0.6}).add_to(m)
+                   style_function=lambda f: {"color": "#1f77b4", "fillColor": "#1f77b4", "weight": 1, "fillOpacity": 0.6}).add_to(fg)
 
 geo = scores[["district_en", "district_th", "rank", "heat_risk", "mean_lst", "geometry"]]
 if show_risk:
     col, cmap, legend = COLOUR_BY[colour_by]
-    folium.Choropleth(geo_data=geo.to_json(), data=scores, columns=["district_en", col],
-                      key_on="feature.properties.district_en", fill_color=cmap, fill_opacity=0.35,
-                      line_opacity=0.4, legend_name=legend).add_to(m)
+    # plain GeoJson instead of folium.Choropleth: Choropleth cannot live inside the feature group that keeps the map view
+    vals = scores.set_index("district_en")[col]
+    lo, hi = float(vals.min()), float(vals.max())
+    fill = {d: matplotlib.colors.to_hex(matplotlib.colormaps[cmap]((v - lo) / (hi - lo))) for d, v in vals.items()}
+    folium.GeoJson(geo.to_json(), name=legend,
+                   style_function=lambda f: {"fillColor": fill[f["properties"]["district_en"]], "fillOpacity": 0.35,
+                                             "color": "#444", "weight": 0.4}).add_to(fg)
+    st.sidebar.caption(f"District colours: {legend}, low {lo:.2f} → high {hi:.2f} ({cmap})")
 folium.GeoJson(
     geo.to_json(), name="Districts",
     style_function=lambda f: {"color": "#000" if f["properties"]["district_en"] == sel else "#444",
                               "weight": 3 if f["properties"]["district_en"] == sel else 0.5, "fillOpacity": 0},
     tooltip=folium.GeoJsonTooltip(fields=["district_en", "rank", "heat_risk", "mean_lst"],
-                                  aliases=["District", "Rank", "Score", "LST °C"], localize=True)).add_to(m)
+                                  aliases=["District", "Rank", "Score", "LST °C"], localize=True)).add_to(fg)
 counted_cats = ["park", "garden / other green", "open green (satellite)"]
 gv = green  # every layer is drawn citywide; the zoom option only moves the view
 STYLE = {"park": ("#004d1f", "#00963c", 0.9),                       # dark green
@@ -194,14 +200,14 @@ if show_green:
             part = part.assign(name=part.name.fillna("(unnamed)"))
             folium.GeoJson(part[["category", "name", "geometry"]].to_json(), name=cat,
                            style_function=lambda f, ln=ln, fl=fl, op=op: {"color": ln, "fillColor": fl, "weight": 1.2, "fillOpacity": op},
-                           tooltip=folium.GeoJsonTooltip(fields=["category", "name"], aliases=["Type", "Name"])).add_to(m)
+                           tooltip=folium.GeoJsonTooltip(fields=["category", "name"], aliases=["Type", "Name"])).add_to(fg)
 if show_canopy:
     part = gv[gv.category.isin(["neighbourhood tree canopy", "satellite green (not counted)"])]
     if len(part):
         folium.GeoJson(part[["category", "geometry"]].to_json(), name="Tree canopy (not counted)",
                        style_function=lambda f: {"color": "#8d9c6b", "fillColor": "#c5e1a5", "weight": 0.5, "fillOpacity": 0.35,
                                                  "dashArray": "3"},
-                       tooltip=folium.GeoJsonTooltip(fields=["category"], aliases=["Not counted as green zone"])).add_to(m)
+                       tooltip=folium.GeoJsonTooltip(fields=["category"], aliases=["Not counted as green zone"])).add_to(fg)
 if show_hot:
     hv = hotspots  # citywide
 if show_hot and len(hv):
@@ -212,7 +218,7 @@ if show_hot and len(hv):
                                              "dashArray": "4"},
                    tooltip=folium.GeoJsonTooltip(fields=["hotspot_id", "lst", "pop", "area_ha", "near_place"],
                                                  aliases=["Hotspot", "LST °C", "People", "Area (ha)", "Near"],
-                                                 localize=True)).add_to(m)
+                                                 localize=True)).add_to(fg)
 focus = load_focus()
 if show_focus and len(focus):
     focus = focus.assign(non_park=np.where(focus.likely_non_park, "yes (airport/industrial/rail/military)", "no"))
@@ -223,15 +229,21 @@ if show_focus and len(focus):
                                              "weight": 2, "fillOpacity": 0.35},
                    tooltip=folium.GeoJsonTooltip(fields=["rank", "district_en", "lst", "ndvi", "dist_green_m", "area_ha", "pop", "non_park"],
                                                  aliases=["Rank", "District", "LST °C", "NDVI", "Dist. to green (m)", "Area (ha)", "People", "Likely non-park land"],
-                                                 localize=True)).add_to(m)
+                                                 localize=True)).add_to(fg)
 elif show_focus:
     st.sidebar.warning("No focus areas found. Run: python -m src.focus")
-if zoom:
+# Move the view only when the district or the zoom checkbox changes; on other reruns the browser keeps your own pan/zoom
+view_key = (sel, zoom)
+set_view = zoom and st.session_state.get("view_key") != view_key
+st.session_state["view_key"] = view_key
+view = {}
+if set_view:
     x0, y0, x1, y1 = scores[scores.district_en == sel].total_bounds
-    m.fit_bounds([[y0, x0], [y1, x1]])
-folium.LayerControl().add_to(m)
+    span = max(x1 - x0, (y1 - y0) * 1.3)
+    view = {"center": ((y0 + y1) / 2, (x0 + x1) / 2), "zoom": int(np.clip(np.floor(np.log2(360 / (span * 1.3))) + 1, 10, 14))}
 
-out = st_folium(m, key="bkk_map", height=650, width="stretch", returned_objects=["last_active_drawing"])
+out = st_folium(m, key="bkk_map", height=650, width="stretch", returned_objects=["last_active_drawing"],
+                feature_group_to_add=fg, **view)
 clicked = (out or {}).get("last_active_drawing")
 if clicked:
     name = clicked.get("properties", {}).get("district_en")
