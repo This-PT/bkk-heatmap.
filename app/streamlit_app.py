@@ -77,6 +77,9 @@ def load_focus():
 @st.cache_data
 def load_green():
     g = gpd.read_file(PROCESSED / "green_zones.gpkg")[["district_en", "category", "name", "area_m2", "geometry"]]
+    # satellite green is counted only where OSM has no data (east of 100.858E); elsewhere it is mostly farmland / orchards
+    outside_gap = (g.category == "open green (satellite)") & (g.geometry.representative_point().x <= 100.858)
+    g.loc[outside_gap, "category"] = "satellite green (not counted)"
     g["geometry"] = shapely.set_precision(g.geometry.values, 1e-5)  # ~1 m, keeps citywide GeoJSON small
     return g[g.area_m2 >= 1000]
 
@@ -137,7 +140,7 @@ shown_types = st.sidebar.multiselect(
     "Green zone types to show", ["park", "garden / other green", "open green (satellite)"],
     default=["park", "garden / other green", "open green (satellite)"],
     help="Dark green = parks, light green = gardens and other OSM green, pale mint = open green seen by satellite")
-show_canopy = st.sidebar.checkbox("Tree canopy in neighbourhoods (not counted as green zone)", False)
+show_canopy = st.sidebar.checkbox("Tree canopy and satellite green (not counted as green zone)", False)
 show_hot = st.sidebar.checkbox("Where to add green space (hotspots)", True)
 show_focus = st.sidebar.checkbox("Focus areas: hot + short of green (src.focus)", True,
                                  help="Hottest 20% AND least-green 20% of 250 m cells; orange outlines, ranked by score x area")
@@ -193,7 +196,7 @@ if show_green:
                            style_function=lambda f, ln=ln, fl=fl, op=op: {"color": ln, "fillColor": fl, "weight": 1.2, "fillOpacity": op},
                            tooltip=folium.GeoJsonTooltip(fields=["category", "name"], aliases=["Type", "Name"])).add_to(m)
 if show_canopy:
-    part = gv[gv.category == "neighbourhood tree canopy"]
+    part = gv[gv.category.isin(["neighbourhood tree canopy", "satellite green (not counted)"])]
     if len(part):
         folium.GeoJson(part[["category", "geometry"]].to_json(), name="Tree canopy (not counted)",
                        style_function=lambda f: {"color": "#8d9c6b", "fillColor": "#c5e1a5", "weight": 0.5, "fillOpacity": 0.35,
@@ -212,11 +215,14 @@ if show_hot and len(hv):
                                                  localize=True)).add_to(m)
 focus = load_focus()
 if show_focus and len(focus):
-    folium.GeoJson(focus[["rank", "district_en", "lst", "ndvi", "dist_green_m", "area_ha", "pop", "geometry"]].to_json(),
+    focus = focus.assign(non_park=np.where(focus.likely_non_park, "yes (airport/industrial/rail/military)", "no"))
+    folium.GeoJson(focus[["rank", "district_en", "lst", "ndvi", "dist_green_m", "area_ha", "pop", "non_park", "geometry"]].to_json(),
                    name="Focus areas",
-                   style_function=lambda f: {"color": "#e65100", "fillColor": "#ff9800", "weight": 2, "fillOpacity": 0.35},
-                   tooltip=folium.GeoJsonTooltip(fields=["rank", "district_en", "lst", "ndvi", "dist_green_m", "area_ha", "pop"],
-                                                 aliases=["Rank", "District", "LST °C", "NDVI", "Dist. to green (m)", "Area (ha)", "People"],
+                   style_function=lambda f: {"color": "#e65100" if f["properties"]["non_park"] == "no" else "#757575",
+                                             "fillColor": "#ff9800" if f["properties"]["non_park"] == "no" else "#bdbdbd",
+                                             "weight": 2, "fillOpacity": 0.35},
+                   tooltip=folium.GeoJsonTooltip(fields=["rank", "district_en", "lst", "ndvi", "dist_green_m", "area_ha", "pop", "non_park"],
+                                                 aliases=["Rank", "District", "LST °C", "NDVI", "Dist. to green (m)", "Area (ha)", "People", "Likely non-park land"],
                                                  localize=True)).add_to(m)
 elif show_focus:
     st.sidebar.warning("No focus areas found. Run: python -m src.focus")
@@ -291,7 +297,7 @@ if not len(hs):
         column_config={"Open map": st.column_config.LinkColumn("Open map", display_text="Google Maps")})
 st.caption("Hotspot method: 250 m grid; priority = z(LST) + z(built-up %) − z(NDVI) + z(log population density); "
            "hotspots are connected clusters of top-15% priority cells more than 400 m from existing green zones. "
-           "Population is WorldPop 2020. Counted green zones are OSM parks plus satellite patches of ≥ 2 ha "
-           "(WorldCover tree/shrub/grass, NDVI ≥ 0.45) with < 40% built-up land around them; smaller patches and canopy "
-           "inside housing are not counted. OSM parks are incomplete, so green per person is a lower bound. "
+           "Population is WorldPop 2020. Counted green zones are OSM parks and gardens, plus satellite patches of ≥ 2 ha "
+           "(WorldCover tree/shrub/grass, NDVI ≥ 0.45, < 40% built-up land around them) only east of 100.858°E where OSM has no data; "
+           "other satellite green (mostly farmland) and canopy inside housing are not counted. OSM parks are incomplete, so green per person is a lower bound. "
            "Planning aid only; check sites on the ground.")

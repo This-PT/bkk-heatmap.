@@ -65,8 +65,9 @@ def main():
 A 250 m grid gives each cell LST, NDVI, built-up share and WorldPop 2020 population. Priority =
 z(LST) + z(built-up %) − z(NDVI) + z(log population density). **Hotspots** are connected clusters
 (at least two cells) in the top 15% of priority that are more than 400 m from any existing green zone.
-**Existing green zones** are OSM parks plus open satellite green: WorldCover tree/shrub/grass patches of at least
-2 ha with NDVI ≥ 0.45 and less than 40% built-up land in a 60 m ring around them (this excludes cropland).
+**Existing green zones** are OSM parks and gardens. Satellite "open green" (WorldCover tree/shrub/grass patches of at
+least 2 ha, NDVI ≥ 0.45, less than 40% built-up land in a 60 m ring) is counted only east of 100.858°E, where OSM has
+no data; elsewhere it is mostly farmland and orchards that people cannot use, so it is drawn but not counted.
 Tree canopy inside housing areas is kept as a separate, uncounted layer. An earlier version counted it, and it
 turned out to be {canopy_pct:.0f}% of "green" area, so green space was overstated; the map is now stricter.
 

@@ -93,13 +93,14 @@ Open-Meteo grid is coarse, so air temperature barely varies between stations.
 A 250 m grid gives each cell LST, NDVI, built-up share and WorldPop 2020 population. Priority =
 z(LST) + z(built-up %) − z(NDVI) + z(log population density). **Hotspots** are connected clusters
 (at least two cells) in the top 15% of priority that are more than 400 m from any existing green zone.
-**Existing green zones** are OSM parks plus open satellite green: WorldCover tree/shrub/grass patches of at least
-2 ha with NDVI ≥ 0.45 and less than 40% built-up land in a 60 m ring around them (this excludes cropland).
+**Existing green zones** are OSM parks and gardens. Satellite "open green" (WorldCover tree/shrub/grass patches of at
+least 2 ha, NDVI ≥ 0.45, less than 40% built-up land in a 60 m ring) is counted only east of 100.858°E, where OSM has
+no data; elsewhere it is mostly farmland and orchards that people cannot use, so it is drawn but not counted.
 Tree canopy inside housing areas is kept as a separate, uncounted layer. An earlier version counted it, and it
-turned out to be 53% of "green" area, so green space was overstated; the map is now stricter.
+turned out to be 67% of "green" area, so green space was overstated; the map is now stricter.
 
-- 183 hotspots cover 8,200 ha and about 1,049,183 people.
-- 36 of 50 districts have less than 9 m² of green space per person (the commonly cited WHO minimum).
+- 188 hotspots cover 8,331 ha and about 1,057,212 people.
+- 38 of 50 districts have less than 9 m² of green space per person (the commonly cited WHO minimum).
 - Least green space per person: Wang Thong Lang (0.4 m²), Samphanthawong (0.4 m²), Pom Prap Sattru Phai (0.5 m²), Thon buri (0.5 m²), Phasi Charoen (0.6 m²).
 
 **Top 10 hotspots citywide** (need = priority × log of people affected)
@@ -109,12 +110,12 @@ turned out to be 53% of "green" area, so green space was overstated; the map is 
 | Bang Kapi #1 | 46.2 | 93.2 | 57175 | 281.2 | 746.5 | บางกะปิ |
 | Bang Phlat #1 | 45.1 | 94.6 | 59683 | 256.2 | 732.4 | ชุมชนวัดรวกบางบำหรุ |
 | Thon buri #1 | 44.8 | 94.2 | 52908 | 218.8 | 597.6 | ชุมชนตากสินสัมพันธ์ |
+| Lat Krabang #1 | 48.5 | 93.9 | 4528 | 62.5 | 519.4 | คลองสามประเวศ |
 | Bang Kho laen #1 | 45.5 | 98.1 | 15404 | 75.0 | 553.3 | ชุมชนสวนหลวง 1 |
 | Lat Phrao #1 | 45.7 | 95.9 | 32117 | 231.2 | 789.8 | ลาดพร้าว |
 | Bang Sue #1 | 45.7 | 95.6 | 20737 | 118.8 | 522.0 | ชุมชนจันทร์เกษม |
 | Din Daeng #1 | 44.5 | 96.5 | 30167 | 131.2 | 521.4 | รัชดาภิเษก |
 | Wang Thong Lang #1 | 44.7 | 94.2 | 51422 | 312.5 | 814.8 | ลุมพินี วิลล์ รามคำแหง 44 |
-| Lat Krabang #1 | 48.3 | 92.5 | 3575 | 50.0 | 501.3 | คลองสามประเวศ |
 | Wang Thong Lang #2 | 45.7 | 94.3 | 24493 | 162.5 | 627.3 | สะพานสอง |
 
 The app lists every district's hotspots with a Google Maps link, highlights existing green zones, and writes a
@@ -168,4 +169,3 @@ python -m src.score
 python -m src.report
 streamlit run app/streamlit_app.py
 ```
-# bkk-heatmap.

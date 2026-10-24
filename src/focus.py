@@ -11,13 +11,26 @@ Run: python -m src.focus
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pyogrio
 from scipy import ndimage
 
 from config import CRS_METRIC, CRS_STORAGE, PROCESSED, ROOT
+from src.drivers import PBF
 
 FOCUS_Q = 0.80   # a cell must be in the hottest 20% AND the least-green 20% of the city
 MIN_CELLS = 2    # ignore isolated single cells
 CELL = 250
+NON_PARK_PCT = 30  # areas with more than this % airport / industrial / railway / military land are flagged and ranked last
+
+
+def non_park_share(areas):
+    """% of each focus area covered by OSM airport, industrial, construction, brownfield, railway or military land."""
+    g = pyogrio.read_dataframe(
+        PBF, layer="multipolygons", use_arrow=False,
+        where="aeroway IS NOT NULL OR landuse IN ('industrial','construction','brownfield','railway','military')")[["geometry"]]
+    g = g.to_crs(CRS_METRIC).make_valid()
+    cover = areas.geometry.apply(lambda a: a.intersection(g.union_all()).area / a.area * 100)
+    return cover.clip(upper=100)
 
 
 def main():
@@ -43,7 +56,10 @@ def main():
     areas["n_cells"] = f.groupby("area_id").size()
     areas = areas[areas.n_cells >= MIN_CELLS].copy()
     areas["area_ha"] = areas.geometry.area / 1e4
-    areas["rank"] = areas.focus_score.mul(areas.area_ha).rank(ascending=False, method="first").astype(int)
+    areas["non_park_pct"] = non_park_share(areas)
+    areas["likely_non_park"] = areas.non_park_pct > NON_PARK_PCT
+    order = areas.focus_score * areas.area_ha - 1e9 * areas.likely_non_park  # flagged areas go to the bottom
+    areas["rank"] = order.rank(ascending=False, method="first").astype(int)
     areas = areas.sort_values("rank").reset_index()
 
     cells.to_crs(CRS_STORAGE).drop(columns="area_id").to_file(PROCESSED / "focus_cells.gpkg", driver="GPKG")
@@ -61,6 +77,7 @@ def main():
           f"{len(areas)} focus areas (>= {MIN_CELLS} cells), {areas.area_ha.sum():,.0f} ha")
     print("\nDistricts with the largest share of focus cells")
     print(by_d.head(10).to_string())
+    print(f"flagged as likely airport / industrial / railway / military land: {int(areas.likely_non_park.sum())}")
     print("\nTop 10 focus areas")
     print(areas.head(10)[["rank", "district_en", "lst", "ndvi", "dist_green_m", "area_ha", "pop"]].round(1).to_string(index=False))
 

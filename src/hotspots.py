@@ -35,10 +35,13 @@ RING_M = 60
 MAX_RING_BUILTUP = 40    # % built-up in a 60 m ring around a patch; above this it is canopy inside housing
 FAR_FROM_GREEN_M = 400   # roughly a 5-minute walk
 TOP_QUANTILE = 0.85      # priority threshold within the city
+OSM_EAST_LIMIT = 100.858  # OSM parks are missing east of this longitude (BBBike extract ends), so satellite green fills the gap
 WHO_M2_PER_PERSON = 9    # commonly cited minimum green space per person (WHO)
 
 
 def gee_rasters(bounds):
+    if all(p.exists() for p in (POP_TIF, LC_TIF, BU_TIF)):
+        return  # everything is cached: no Earth Engine login needed
     ee.Initialize(project=GEE_PROJECT)
     region = ee.Geometry.Rectangle(list(bounds))
     wc = ee.Image("ESA/WorldCover/v200/2021").select("Map")
@@ -166,7 +169,9 @@ def main():
     cells["pop_density"] = cells["pop"] / (CELL * CELL / 1e6)  # people per km2
 
     # distance from each cell centre to the nearest existing green zone
-    counted = green[green.category != "neighbourhood tree canopy"]
+    # counted green = OSM parks/gardens everywhere; satellite open green only where OSM has no data (it is mostly farmland elsewhere)
+    in_gap = green.geometry.representative_point().x > OSM_EAST_LIMIT
+    counted = green[(green.source == "OSM") | ((green.category == "open green (satellite)") & in_gap)]
     gu = counted.to_crs(CRS_METRIC).geometry.union_all()
     cells["dist_green_m"] = cells.geometry.centroid.distance(gu)
     gm = counted.to_crs(CRS_METRIC).dissolve(by="district_en").geometry.area
